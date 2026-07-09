@@ -1,45 +1,69 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+
+// Estrutura exata da tabela que criamos no banco de dados
+interface Poema {
+  id: number;
+  created_at: string;
+  titulo: string;
+  texto: string;
+}
 
 export default function Home() {
-  // Estado para armazenar os poemas (começa com os fictícios)
-  const [poemas, setPoemas] = useState([
-    {
-      id: 1,
-      titulo: "Código e Acordes",
-      data: "08/07/2026",
-      trecho: "As teclas do piano imitam o teclado do computador, em ambos procuro harmonia, em ambos coloco amor..."
-    },
-    {
-      id: 2,
-      titulo: "Madrugada Estática",
-      data: "05/07/2026",
-      trecho: "No silêncio do estúdio a frequência se faz melodia. O que o peito esconde, a linha de código recria."
-    }
-  ]);
-
-  // Estados de controle da interface e formulário
+  const [poemas, setPoemas] = useState<Poema[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isCriando, setIsCriando] = useState(false);
   const [titulo, setTitulo] = useState('');
   const [texto, setTexto] = useState('');
 
-  // Função para salvar o novo poema na lista local
-  const salvarPoema = (e: React.FormEvent) => {
+  // 1. Função para carregar os poemas vindos do Supabase
+  const buscarPoemas = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('poemas')
+        .select('*')
+        .order('created_at', { ascending: false }); // O mais recente primeiro
+
+      if (error) throw error;
+      if (data) setPoemas(data);
+    } catch (error: any) {
+      console.error('Erro ao buscar poemas:', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Carrega a listagem automaticamente quando a página abre
+  useEffect(() => {
+    buscarPoemas();
+  }, []);
+
+  // 2. Função para salvar o novo poema diretamente na nuvem
+  const salvarPoema = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!titulo.trim() || !texto.trim()) return;
 
-    const novoPoema = {
-      id: Date.now(),
-      titulo: titulo,
-      data: new Date().toLocaleDateString('pt-BR'),
-      trecho: texto
-    };
+    try {
+      const { error } = await supabase
+        .from('poemas')
+        .insert([{ titulo: titulo, texto: texto }]);
 
-    setPoemas([novoPoema, ...poemas]); // Adiciona o novo poema no topo da lista
-    setTitulo('');
-    setTexto('');
-    setIsCriando(false); // Volta para a listagem
+      if (error) throw error;
+
+      // Limpa os campos e fecha o formulário
+      setTitulo('');
+      setTexto('');
+      setIsCriando(false);
+      
+      // Recarrega a lista para trazer o poema recém-criado
+      buscarPoemas();
+    } catch (error: any) {
+      console.error('Erro ao salvar poema:', error.message);
+      alert('Não foi possível guardar o seu poema. Verifique a ligação.');
+    }
   };
 
   return (
@@ -56,20 +80,28 @@ export default function Home() {
 
           {/* Feed de Poemas */}
           <main className="w-full max-w-md space-y-4 flex-1">
-            {poemas.map((poema) => (
-              <article 
-                key={poema.id} 
-                className="bg-white p-5 rounded-2xl shadow-sm border border-stone-200/60 hover:shadow-md transition-all active:scale-[0.99] cursor-pointer"
-              >
-                <div className="flex justify-between items-baseline mb-2">
-                  <h2 className="text-lg font-serif font-semibold text-stone-900">{poema.titulo}</h2>
-                  <span className="text-xs text-stone-400">{poema.data}</span>
-                </div>
-                <p className="text-stone-600 italic text-sm leading-relaxed whitespace-pre-line">
-                  "{poema.trecho}"
-                </p>
-              </article>
-            ))}
+            {loading ? (
+              <p className="text-center text-sm text-stone-400 italic py-12 animate-pulse">A alinhar os teus versos...</p>
+            ) : poemas.length === 0 ? (
+              <p className="text-center text-sm text-stone-400 italic py-12">O teu diário está em branco. Toque no + para libertar as palavras.</p>
+            ) : (
+              poemas.map((poema) => (
+                <article 
+                  key={poema.id} 
+                  className="bg-white p-5 rounded-2xl shadow-sm border border-stone-200/60 hover:shadow-md transition-all active:scale-[0.99] cursor-pointer"
+                >
+                  <div className="flex justify-between items-baseline mb-2">
+                    <h2 className="text-lg font-serif font-semibold text-stone-900">{poema.titulo}</h2>
+                    <span className="text-xs text-stone-400">
+                      {new Date(poema.created_at).toLocaleDateString('pt-BR')}
+                    </span>
+                  </div>
+                  <p className="text-stone-600 italic text-sm leading-relaxed whitespace-pre-line">
+                    "{poema.texto}"
+                  </p>
+                </article>
+              ))
+            )}
           </main>
 
           {/* Botão Flutuante (FAB) */}
